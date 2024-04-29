@@ -7,6 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
+/// afterInitRead是组件初始化的时候根据url去缓存读取文件,读取不到就去下载;
+/// beforeDownload,afterDownload,beforeReadCache,afterReadCache分别是下载前后触发,读取缓存前后触发
+///beforeShowImage,svg无论是读内存还是下载,反正成功且将要显示前;
 class CachedNetworkSVGImage extends StatefulWidget {
   CachedNetworkSVGImage(
     String url, {
@@ -29,6 +32,10 @@ class CachedNetworkSVGImage extends StatefulWidget {
     ColorFilter? colorFilter,
     WidgetBuilder? placeholderBuilder,
     BaseCacheManager? cacheManager,
+    this.afterLoadImage,
+    this.beforeReadCache,
+    this.afterReadCache,
+    this.beforeShowImage,
   })  : _url = url,
         _placeholder = placeholder,
         _errorWidget = errorWidget,
@@ -69,24 +76,31 @@ class CachedNetworkSVGImage extends StatefulWidget {
   final ColorFilter? _colorFilter;
   final WidgetBuilder? _placeholderBuilder;
   final BaseCacheManager _cacheManager;
+  final Function(String)? afterLoadImage; // 新增回调参数
+  final Function(String cacheKey, String imageUrl)? beforeReadCache;
+
+  final Function(String cacheKey, String imageUrl, bool isReadSuccess, String svgString)? afterReadCache;
+
+  final Function(String svgString)? beforeShowImage;
 
   @override
   State<CachedNetworkSVGImage> createState() => _CachedNetworkSVGImageState();
 
-  static Future<void> preCache(String imageUrl,
-      {BaseCacheManager? cacheManager}) {
+  /// 直接缓存指定文件
+  static Future<void> preCache(String imageUrl, {BaseCacheManager? cacheManager}) {
     final key = _generateKeyFromUrl(imageUrl);
     cacheManager ??= DefaultCacheManager();
     return cacheManager.downloadFile(key);
   }
 
-  static Future<void> clearCacheForUrl(String imageUrl,
-      {BaseCacheManager? cacheManager}) {
+  /// 清理指定缓存
+  static Future<void> clearCacheForUrl(String imageUrl, {BaseCacheManager? cacheManager}) {
     final key = _generateKeyFromUrl(imageUrl);
     cacheManager ??= DefaultCacheManager();
     return cacheManager.removeFile(key);
   }
 
+  ///清理所有缓存
   static Future<void> clearCache({BaseCacheManager? cacheManager}) {
     cacheManager ??= DefaultCacheManager();
     return cacheManager.emptyCache();
@@ -95,8 +109,7 @@ class CachedNetworkSVGImage extends StatefulWidget {
   static String _generateKeyFromUrl(String url) => url.split('?').first;
 }
 
-class _CachedNetworkSVGImageState extends State<CachedNetworkSVGImage>
-    with SingleTickerProviderStateMixin {
+class _CachedNetworkSVGImageState extends State<CachedNetworkSVGImage> with SingleTickerProviderStateMixin {
   bool _isLoading = false;
   bool _isError = false;
   File? _imageFile;
@@ -120,9 +133,15 @@ class _CachedNetworkSVGImageState extends State<CachedNetworkSVGImage>
   Future<void> _loadImage() async {
     try {
       _setToLoadingAfter15MsIfNeeded();
-
-      var file =
-          (await widget._cacheManager.getFileFromMemory(_cacheKey))?.file;
+      //读取缓存前;
+      if (widget.beforeReadCache != null) {
+        widget.beforeReadCache!(_cacheKey, widget._url);
+      }
+      var file = (await widget._cacheManager.getFileFromMemory(_cacheKey))?.file;
+      //如果file不为空则返回文件内容;
+      if (widget.afterReadCache != null) {
+        widget.afterReadCache!(_cacheKey, widget._url, file == null ? false : true, file != null ? await file.readAsString() : "");
+      }
 
       file ??= await widget._cacheManager.getSingleFile(
         widget._url,
@@ -133,6 +152,11 @@ class _CachedNetworkSVGImageState extends State<CachedNetworkSVGImage>
       _imageFile = file;
       _isLoading = false;
 
+      // 这里触发回调函数
+      if (widget.afterLoadImage != null) {
+        widget.afterLoadImage!(await file.readAsString()); // 调用回调并传递SVG数据
+      }
+      //---------完成触发
       _setState();
 
       _controller.forward();
@@ -184,14 +208,18 @@ class _CachedNetworkSVGImageState extends State<CachedNetworkSVGImage>
     );
   }
 
-  Widget _buildPlaceholderWidget() =>
-      Center(child: widget._placeholder ?? const SizedBox());
+  Widget _buildPlaceholderWidget() => Center(child: widget._placeholder ?? const SizedBox());
 
-  Widget _buildErrorWidget() =>
-      Center(child: widget._errorWidget ?? const SizedBox());
+  Widget _buildErrorWidget() => Center(child: widget._errorWidget ?? const SizedBox());
 
   Widget _buildSVGImage() {
     if (_imageFile == null) return const SizedBox();
+
+    _imageFile!.readAsString().then((svgData) {
+      if (widget.beforeShowImage != null) {
+        widget.beforeShowImage!(svgData);
+      }
+    });
 
     return SvgPicture.file(
       _imageFile!,

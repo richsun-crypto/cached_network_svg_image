@@ -1,3 +1,4 @@
+//去除了所有动画;
 library cached_network_svg_image;
 
 import 'dart:developer';
@@ -115,18 +116,18 @@ class _CachedNetworkSVGImageState extends State<CachedNetworkSVGImage> with Sing
   File? _imageFile;
   late String _cacheKey;
 
-  late final AnimationController _controller;
-  late final Animation<double> _animation;
+/*  late final AnimationController _controller;
+  late final Animation<double> _animation;*/
 
   @override
   void initState() {
     super.initState();
     _cacheKey = CachedNetworkSVGImage._generateKeyFromUrl(widget._url);
-    _controller = AnimationController(
+    /*_controller = AnimationController(
       vsync: this,
       duration: widget._fadeDuration,
-    );
-    _animation = Tween(begin: 0.0, end: 1.0).animate(_controller);
+    );*/
+    // _animation = Tween(begin: 0.0, end: 1.0).animate(_controller);
     _loadImage();
   }
 
@@ -159,7 +160,7 @@ class _CachedNetworkSVGImageState extends State<CachedNetworkSVGImage> with Sing
       //---------完成触发
       _setState();
 
-      _controller.forward();
+      // _controller.forward();
     } catch (e) {
       log('CachedNetworkSVGImage: $e');
 
@@ -184,7 +185,7 @@ class _CachedNetworkSVGImageState extends State<CachedNetworkSVGImage> with Sing
 
   @override
   void dispose() {
-    _controller.dispose();
+    // _controller.dispose();
     super.dispose();
   }
 
@@ -202,10 +203,7 @@ class _CachedNetworkSVGImageState extends State<CachedNetworkSVGImage> with Sing
 
     if (_isError) return _buildErrorWidget();
 
-    return FadeTransition(
-      opacity: _animation,
-      child: _buildSVGImage(),
-    );
+    return _buildSVGImage();
   }
 
   Widget _buildPlaceholderWidget() => Center(child: widget._placeholder ?? const SizedBox());
